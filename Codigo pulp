@@ -1,0 +1,72 @@
+"""
+Created on Tue Mar 18 00:31:06 2025
+
+@author: MauricioFloresCuevas
+"""
+
+from pulp import LpMaximize, LpProblem, LpVariable, LpStatus
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+
+# Definir el problema
+model = LpProblem(name="optimizar-generacion-renovable", sense=LpMaximize)
+
+# Variables de decisión
+paneles = LpVariable(name="paneles", lowBound=0, cat="Integer")  # Número de paneles solares
+aerogeneradores = LpVariable(name="aerogeneradores", lowBound=0, upBound=50, cat="Integer")  # Máximo 50 aerogeneradores
+
+# Parámetros
+capacidad_paneles = 1.5  # MWh por cada 10m2 instalados por año
+hsp = 5  # Horas solares pico
+area_panel = 20  # m2 por string
+capacidad_aerogenerador = 3  # MWh por aerogenerador por año
+area_maxima = 5000  # m2 disponibles para paneles y aerogeneradores
+energia_minima = 800  # MWh demanda mínima
+energia_maxima = 960  # MWh demanda máxima
+potencia_pico_panel = capacidad_paneles / (hsp * 365) * 1000  # kW
+area_aerogenerador = 500  # Se estima que cada aerogenerador ocupa 500 m²
+
+# Restricciones
+model += (paneles * (capacidad_paneles / 10) + aerogeneradores * capacidad_aerogenerador >= energia_minima, "Demanda_Minima")
+model += (paneles * (capacidad_paneles / 10) + aerogeneradores * capacidad_aerogenerador <= energia_maxima, "Demanda_Maxima")
+model += ((paneles * area_panel) + (aerogeneradores * area_aerogenerador) <= area_maxima, "Restriccion_Area_Total")
+
+# Función objetivo: maximizar la generación de energía dentro del rango permitido
+model += (paneles * (capacidad_paneles / 10) + aerogeneradores * capacidad_aerogenerador), "Maximizar_Generacion"
+
+# Resolver el problema
+model.solve()
+
+# Resultados
+paneles_optimos = paneles.varValue
+aerogeneradores_optimos = aerogeneradores.varValue
+energia_generada = paneles_optimos * (capacidad_paneles / 10) + aerogeneradores_optimos * capacidad_aerogenerador
+area_utilizada = (paneles_optimos * area_panel) + (aerogeneradores_optimos * area_aerogenerador)
+
+print("\n=== Modelo Utilizado ===")
+print(model)
+print("\n=== Resultados ===")
+print(f"Estado de la optimización: {LpStatus[model.status]}")
+print(f"Cantidad óptima de paneles solares: {paneles_optimos}")
+print(f"Potencia pico de cada panel: {potencia_pico_panel:.2f} kW")
+print(f"Cantidad óptima de aerogeneradores: {aerogeneradores_optimos}")
+print(f"Energía total generada: {energia_generada:.2f} MWh/año")
+print(f"Área total utilizada: {area_utilizada:.2f} m² (de {area_maxima} m² disponibles)")
+
+# Visualización en 3D
+ejes_x = np.arange(0, 100, 1)
+ejes_y = np.arange(0, 51, 1)
+X, Y = np.meshgrid(ejes_x, ejes_y)
+Z = (X * (capacidad_paneles / 10)) + (Y * capacidad_aerogenerador)
+
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.7)
+ax.scatter(paneles_optimos, aerogeneradores_optimos, energia_generada, color='red', s=100, label='Solución Óptima')
+ax.set_xlabel('Número de Paneles Solares')
+ax.set_ylabel('Número de Aerogeneradores')
+ax.set_zlabel('Energía Generada (MWh/año)')
+ax.set_title('Optimización de Generación de Energía Renovable')
+ax.legend()
+plt.show()
