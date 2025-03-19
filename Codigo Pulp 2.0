@@ -1,0 +1,87 @@
+from pulp import LpMaximize, LpProblem, LpVariable, LpStatus
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+
+# Definir el problema
+model = LpProblem(name="optimizar-generacion-renovable", sense=LpMaximize)
+
+# Variables de decisión
+paneles = LpVariable(name="paneles", lowBound=0, cat="Integer")  # Número de paneles solares
+aerogeneradores = LpVariable(name="aerogeneradores", lowBound=0, upBound=50, cat="Integer")  # Máximo 50 aerogeneradores
+
+# Parámetros
+capacidad_paneles = 1.5  # MWh por cada 10m2 instalados por año
+hsp = 5  # Horas solares pico
+area_panel = 20  # m2 por string
+capacidad_aerogenerador = 3  # MWh por aerogenerador por año
+area_maxima = 5000  # m2 disponibles para paneles y aerogeneradores
+energia_minima = 800  # MWh demanda mínima
+energia_maxima = 960  # MWh demanda máxima
+potencia_pico_panel = 500  # W por panel
+string_paneles = 5  # Paneles por string
+potencia_pico_string = potencia_pico_panel * string_paneles / 1000  # kW
+area_aerogenerador = 350  # m² por aerogenerador
+potencia_aerogenerador = 750  # kW por aerogenerador
+
+# Restricciones
+model += (paneles * (potencia_pico_string * hsp * 365 / 1000) + aerogeneradores * capacidad_aerogenerador >= energia_minima, "Demanda_Minima")
+model += (paneles * (potencia_pico_string * hsp * 365 / 1000) + aerogeneradores * capacidad_aerogenerador <= energia_maxima, "Demanda_Maxima")
+model += ((paneles * area_panel) + (aerogeneradores * area_aerogenerador) <= area_maxima, "Restriccion_Area_Total")
+
+# Función objetivo: maximizar la generación de energía dentro del rango permitido
+model += (paneles * (potencia_pico_string * hsp * 365 / 1000) + aerogeneradores * capacidad_aerogenerador), "Maximizar_Generacion"
+
+# Resolver el problema
+model.solve()
+
+# Resultados
+paneles_optimos = int(paneles.varValue)
+aerogeneradores_optimos = int(aerogeneradores.varValue)
+energia_generada = paneles_optimos * (potencia_pico_string * hsp * 365 / 1000) + aerogeneradores_optimos * capacidad_aerogenerador
+area_utilizada = (paneles_optimos * area_panel) + (aerogeneradores_optimos * area_aerogenerador)
+
+print("\n=== Modelo Utilizado ===")
+print(model)
+print("\n=== Resultados ===")
+print(f"Estado de la optimización: {LpStatus[model.status]}")
+print(f"Cantidad óptima de paneles solares: {paneles_optimos}")
+print(f"Potencia pico de cada string de paneles: {potencia_pico_string:.2f} kW")
+print(f"Cantidad óptima de aerogeneradores: {aerogeneradores_optimos}")
+print(f"Energía total generada: {energia_generada:.2f} MWh/año")
+print(f"Área total utilizada: {area_utilizada:.2f} m² (de {area_maxima} m² disponibles)")
+
+# Visualización en 3D
+ejes_x = np.arange(0, 100, 1)
+ejes_y = np.arange(0, 51, 1)
+X, Y = np.meshgrid(ejes_x, ejes_y)
+Z = (X * (potencia_pico_string * hsp * 365 / 1000)) + (Y * capacidad_aerogenerador)
+
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.7)
+ax.scatter(paneles_optimos, aerogeneradores_optimos, energia_generada, color='red', s=100, label='Solución Óptima')
+ax.set_xlabel('Número de Paneles Solares')
+ax.set_ylabel('Número de Aerogeneradores')
+ax.set_zlabel('Energía Generada (MWh/año)')
+ax.set_title('Optimización de Generación de Energía Renovable')
+ax.legend()
+plt.show()
+
+# Gráfico de distribución del uso del terreno
+uso_terreno = [paneles_optimos * area_panel, aerogeneradores_optimos * area_aerogenerador, area_maxima - area_utilizada]
+etiquetas = ['Paneles Solares', 'Aerogeneradores', 'Espacio Libre']
+colores = ['gold', 'blue', 'gray']
+plt.figure(figsize=(7, 7))
+plt.pie(uso_terreno, labels=etiquetas, autopct='%1.1f%%', colors=colores, startangle=140)
+plt.title('Distribución del Uso del Terreno')
+plt.show()
+
+# Gráfico de contribución a la generación de energía
+energia_fuentes = [paneles_optimos * (potencia_pico_string * hsp * 365 / 1000), aerogeneradores_optimos * capacidad_aerogenerador]
+etiquetas_energia = ['Paneles Solares', 'Aerogeneradores']
+colores_energia = ['orange', 'blue']
+plt.figure(figsize=(7, 7))
+plt.pie(energia_fuentes, labels=etiquetas_energia, autopct='%1.1f%%', colors=colores_energia, startangle=140)
+plt.title('Contribución a la Generación de Energía')
+plt.show()
